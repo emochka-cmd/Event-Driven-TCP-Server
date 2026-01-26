@@ -14,7 +14,7 @@ int main() {
     int sock = socket(AF_INET, SOCK_STREAM, 0); // создает новый сокет и возвращает файловый дискриптор
     
     if (sock == -1) {
-        std::cerr << "socket error" << strerror(errno) << "\n";
+        std::cerr << "socket error: " << strerror(errno) << "\n";
         exit(EXIT_FAILURE);
     }
 
@@ -27,10 +27,16 @@ int main() {
     int bind_res =  bind(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)); // привязка сокета к его адресу и порту
 
     if (bind_res == -1) {
-        std::cerr << "bind error" << strerror(errno) << "/n";
+        std::cerr << "bind error: " << strerror(errno) << "/n";
         close(sock);
         exit(EXIT_FAILURE);
     }
 
     // реализация listen
+    int listen_res = listen(sock, 10); // n - количество применяемых, возможна замена
+    if (listen_res == -1) {
+        std::cerr << "lesten error: " << strerror(errno) << "\n";
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
 }
