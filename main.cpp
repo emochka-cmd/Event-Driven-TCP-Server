@@ -27,16 +27,30 @@ int main() {
     int bind_res =  bind(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)); // привязка сокета к его адресу и порту
 
     if (bind_res == -1) {
-        std::cerr << "bind error: " << strerror(errno) << "/n";
+        std::cerr << "bind error: " << strerror(errno) << "\n";
         close(sock);
         exit(EXIT_FAILURE);
     }
 
     // реализация listen
-    int listen_res = listen(sock, 10); // n - количество применяемых, возможна замена
+    int listen_res = listen(sock, 10); // n - количество применяемых, возможна замена. по сути accept берет из это очереди
     if (listen_res == -1) {
         std::cerr << "lesten error: " << strerror(errno) << "\n";
         close(sock);
         exit(EXIT_FAILURE);
     }
+
+    // принятие запроса на установление соединения от клиента (acept)
+    struct sockaddr_in client_addr;
+    socklen_t client_addr_len = sizeof(client_addr);// socklen_t как раз для принципов POSIX 
+    std::memset(&client_addr, 0, sizeof(client_addr));
+
+    int accept_res = accept(sock, (struct sockaddr*)&client_addr, &client_addr_len);
+
+    if (accept_res == -1) {
+        std::cerr << "accept error: " << strerror(errno) << "\n";
+        close(sock);
+        exit(EXIT_FAILURE);
+    }
+    
 }
