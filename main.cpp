@@ -2,9 +2,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
-#include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <unordered_map>
 #include <netinet/in.h> // sock_addrin
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
@@ -13,22 +13,25 @@
 class Server {
 private:
     int sock; 
+    std::unordered_map<int, std::string> client_accepting; // первое значение - fd, второе концепт, пока бред
+
 
     const int family = AF_INET; 
     const int PORT = 8080;
-    const int ADDR = INADDR_ANY;
+    const int ADDR = INADDR_ANY; // возможно заменить на "127.0.0.1"  
     
     const int listen_count = 10;
 
 
-    void listening() {
-        int listen_res = listen(sock, listen_count);
-
-        if (listen_res == -1) {
-            std::cerr << "lesten error: " << strerror(errno) << "\n";
-            close(sock);
+    int creat_sock() {
+        int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
+        
+        if (sock_res == -1) {
+            std::cerr << "server socket error: " << strerror(errno) << "\n";
             exit(EXIT_FAILURE);
         }
+    
+        return sock_res;
     }
 
     void bind_socket() {
@@ -47,23 +50,44 @@ private:
         }
     }
 
-    int creat_sock() {
-        int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
-        
-        if (sock_res == -1) {
-            std::cerr << "server socket error: " << strerror(errno) << "\n";
+    void listening() {
+        int listen_res = listen(sock, listen_count);
+
+        if (listen_res == -1) {
+            std::cerr << "lesten error: " << strerror(errno) << "\n";
+            close(sock);
             exit(EXIT_FAILURE);
         }
-    
-        return sock_res;
     }
+
+    void client_accept() {
+        struct sockaddr_in client_addr;
+        
+        socklen_t len_client_addr= sizeof(client_addr);
+        int accept_res = accept(sock, (struct sockaddr*)&client_addr, &len_client_addr);
+        
+        if (accept_res == -1) {
+            std::cerr << "client accept error: " << strerror(errno) << "\n";
+        } 
+
+        else {
+            client_accepting[accept_res] = "accept";
+            std::cout << "Client accept, res: " << accept_res;
+        }
+        
+    }
+
 
 public:
     Server() : sock(creat_sock()){
         bind_socket(); 
         listening(); 
-        std::cout << "Server created" << "\n";
+        std::cout << "Server created." << "\n";
     } 
+
+    void accept_client() {
+        client_accept();
+    }
 
 };
 
@@ -95,7 +119,7 @@ private:
             std::cerr << "client connection error: " << strerror(errno) << "\n";
         }
 
-        std::cout << "Client connect successful" << "\n";
+        std::cout << "Client connect SUCCSESS." << "\n";
     }
 
     int creat_sock() {
@@ -115,7 +139,11 @@ public:
     }
 };
 
+
 int main() {
     Server my_server;
+    sleep(1);
     Client my_client;
+
+    my_server.accept_client();
 }
