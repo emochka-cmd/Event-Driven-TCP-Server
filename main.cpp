@@ -11,12 +11,6 @@
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
 
-struct Client {
-    int fd;
-
-};
-
-
 class Server {
 private:
     int sock; 
@@ -78,10 +72,39 @@ private:
         } 
 
         else {
-            client_accepting[accept_res] = "NEW";
+            client_accepting[accept_res] = "NEW"; // перенести в другое место?
             std::cout << "Client accept, res: " << accept_res <<"\n";
+            client_accepting[accept_res] = "CONNECTED"; 
         }
         
+    }
+
+    void get_message() {
+        for (const auto& curr_client : client_accepting) {
+            
+            if (curr_client.second == "CONNECTED") {
+                client_accepting[curr_client.first] = "READING";
+
+                char buffer[4096];
+                std::memset(&buffer, 0, sizeof(buffer));
+
+                int recv_res = recv(curr_client.first, buffer, sizeof(buffer) - 1, 0);
+
+                if (recv_res > 0) {
+                    buffer[recv_res] = '\0';
+
+                    std::string message(buffer);
+                    std::cout << "get message: " << message << "\n";
+                }
+
+                if (recv_res == -1) {
+                    std::cerr << "Error in get_message" << strerror(errno) << "\n"; 
+                }
+
+
+            }
+
+        }
     }
 
 
@@ -94,6 +117,10 @@ public:
 
     void accept_client() {
         client_accept();
+    }
+
+    void message_get(){
+        get_message();
     }
 
 };
@@ -191,4 +218,6 @@ int main() {
     my_server.accept_client();
 
     my_client.create_message("fffffasfddasdaswds");
+
+    my_server.message_get();
 }
