@@ -1,13 +1,20 @@
 #include <cerrno>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unordered_map>
 #include <netinet/in.h> // sock_addrin
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
+
+struct Client {
+    int fd;
+
+};
 
 
 class Server {
@@ -71,19 +78,19 @@ private:
         } 
 
         else {
-            client_accepting[accept_res] = "accept";
-            std::cout << "Client accept, res: " << accept_res;
+            client_accepting[accept_res] = "NEW";
+            std::cout << "Client accept, res: " << accept_res <<"\n";
         }
         
     }
 
 
 public:
-    Server() : sock(creat_sock()){
-        bind_socket(); 
-        listening(); 
-        std::cout << "Server created." << "\n";
-    } 
+    void start() {
+        sock = creat_sock();
+        bind_socket();
+        listening();
+    }
 
     void accept_client() {
         client_accept();
@@ -92,7 +99,7 @@ public:
 };
 
 
-class Client {
+class Client_Server {
 private:
     int sock;
 
@@ -100,6 +107,17 @@ private:
     const int PORT = 8080;
     const char* ADDR = "127.0.0.1";
 
+
+    int creat_sock() {
+        int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
+        
+        if (sock_res == -1) {
+            std::cerr << "client socket error: " << strerror(errno) << "\n";
+            exit(EXIT_FAILURE);
+        }
+    
+        return sock_res;
+    }
 
     void connect_to_server() {
         struct sockaddr_in server_addr;
@@ -122,28 +140,55 @@ private:
         std::cout << "Client connect SUCCSESS." << "\n";
     }
 
-    int creat_sock() {
-        int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
-        
-        if (sock_res == -1) {
-            std::cerr << "client socket error: " << strerror(errno) << "\n";
-            exit(EXIT_FAILURE);
+    void send_message(const std::string& message) {
+        size_t alredy_send = 0, need_send = message.length();
+        const char* data = message.c_str();
+
+        while (alredy_send <= need_send) {
+            size_t send_res = send(sock, data + alredy_send, need_send - alredy_send, 0); // last - flags, more in man send
+            
+            if (send_res == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK){
+                    usleep(1000);
+                    continue;
+                }
+
+                std::cerr << "Send Error: " << strerror(errno) << "\n";
+            }
+            
+            if (send_res == 0) {
+                std::cerr << "connection closed\n";
+                return;
+            }
+
+            alredy_send += send_res;
+            need_send -= send_res;
         }
-    
-        return sock_res;
+        
+        std::cout << "Send message SUCCSESS" << "\n";
     }
 
+
 public:
-    Client() : sock(creat_sock()) {
+    Client_Server() : sock(creat_sock()) {
         connect_to_server();
+    }
+
+    void create_message(const std::string& message){
+        send_message(message);
     }
 };
 
 
 int main() {
     Server my_server;
+    my_server.start();
+
     sleep(1);
-    Client my_client;
+
+    Client_Server my_client;
 
     my_server.accept_client();
+
+    my_client.create_message("fffffasfddasdaswds");
 }
