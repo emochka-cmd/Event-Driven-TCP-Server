@@ -10,6 +10,7 @@
 #include <netinet/in.h> // sock_addrin
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
+#include <fcntl.h> // for non block
 
 class Server {
 private:
@@ -27,7 +28,7 @@ private:
     SERVER_STATUS server_status; 
 
     enum STATUS {
-        NEW, //
+        // NEW, // нужен ли?
         CONNECTED, // принят в accept, дальше в READING/CLOSED
         READING, // вызывает recv, далее в PROCESING/CLOSSED/ERROR
         PROCESSING, // данные полученны WRITING/READING/CLOSSED
@@ -58,8 +59,27 @@ private:
             std::cerr << "server socket error: " << strerror(errno) << "\n";
             server_status = FAILED;
         }
-    
+        
+        std::cout << "Socket is creating." << "\n";
         return sock_res;
+    }
+
+    void non_blocked_sock_mod() {
+        int flags = fcntl(sock, F_GETFL, 0);
+        
+        if (flags == -1) {
+            std::cerr << "Error getting socket flags: " << strerror(errno) << "\n";
+            exit(0); 
+        }
+
+        int res = fcntl(sock, F_SETFL, flags | O_NONBLOCK);
+
+        if (res == -1) {
+            std::cerr << "Error setting non-blocking mode: " << strerror(errno) << "\n";
+            exit(0);
+        }
+        
+        std::cout << "Socket in non-blocked mode" << "\n";
     }
 
     void bind_socket() {
@@ -92,6 +112,7 @@ private:
         server_status = STARTING;
 
         sock = creat_sock();
+        non_blocked_sock_mod();
         bind_socket();
         listening();
     }
@@ -102,7 +123,36 @@ private:
 
         while (server_status == ACTIVE) {
             client_accept();
+            for (auto& client : client_accepting) {
+                switch (client.second.status) {
+                    //case (NEW):
+                    
+                    case (CONNECTED): // прием сообщения
+                        read_from_client(client.first);
+                        break;
 
+                     case (READING):
+                        std::cout << "need make reading" << "\n";
+                        break;
+
+                    case (PROCESSING):
+                        std::cout << "need make processing" << "\n";
+                        break;
+
+                    case (WRITING):
+                        std::cout << "need make writing" << "\n";
+                        break;
+
+                    case (ERROR): // возможно добавление обработки в будующем
+                        client_accepting[client.first].status = CLOSED; 
+                        break;
+
+                    case (CLOSED): // удаление
+                        client_accepting.erase(client.first);
+                        break;
+
+                }
+            }
         }
     }
 
@@ -112,7 +162,7 @@ private:
         
         socklen_t len_client_addr= sizeof(client_addr);
         int client_fd = accept(sock, (struct sockaddr*)&client_addr, &len_client_addr);
-        
+
         if (client_fd == -1) {
             std::cerr << "client accept error: " << strerror(errno) << "\n";
         } 
@@ -204,8 +254,13 @@ public:
         }
     }
 
-    void start() {
+    void serv() {
+        run_server();
+    }
+
+    Server () {
         start_server();
+        usleep(666);
     }
 
 };
@@ -297,18 +352,13 @@ public:
 
 int main() {
     Server my_server;
-    my_server.start();
-
-    sleep(1);
 
     Client_Server my_client;
 
-    my_server.accept_client();
-
     my_client.create_message("fffffasfddasdaswds");
 
-    my_server.message_get();
-
     // for debaging
+    my_server.serv();
+
     my_server.for_debag();
 }
