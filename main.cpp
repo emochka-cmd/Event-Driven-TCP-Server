@@ -17,8 +17,8 @@ private:
         // need realize all
         ACTIVE,
         STARTING,
-        STOPED,
-        REBOOT,
+        STOPPED,
+        REBOOTING,
         FAILED,
         MAINTENANCE
     };
@@ -50,15 +50,6 @@ private:
     const int listen_count = 10;
     const int buffer_size = 1024;
 
-    void start() {
-        server_status = STARTING;
-
-        sock = creat_sock();
-        bind_socket();
-        listening();
-
-        server_status = ACTIVE;
-    }
 
     int creat_sock() {
         int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
@@ -97,6 +88,25 @@ private:
         }
     }
 
+    void start_server() {
+        server_status = STARTING;
+
+        sock = creat_sock();
+        bind_socket();
+        listening();
+    }
+
+
+    void run_server() {
+        server_status = ACTIVE;
+
+        while (server_status == ACTIVE) {
+            client_accept();
+
+        }
+    }
+
+
     void client_accept() {
         struct sockaddr_in client_addr;
         
@@ -104,7 +114,6 @@ private:
         int client_fd = accept(sock, (struct sockaddr*)&client_addr, &len_client_addr);
         
         if (client_fd == -1) {
-            client_accepting[client_fd].status = ERROR;
             std::cerr << "client accept error: " << strerror(errno) << "\n";
         } 
 
@@ -121,7 +130,7 @@ private:
         ssize_t reed_res = recv(fd, buffer, sizeof(buffer) - 1, 0);
 
         if (reed_res == -1) {
-            if (reed_res == EAGAIN || reed_res == EWOULDBLOCK) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return;
             }
 
@@ -151,22 +160,52 @@ private:
 
 public:
 
-
-    void accept_client() {
-        client_accept();
+    void get_server_status() {
+          switch (server_status) {
+            case ACTIVE:
+                std::cout << "Server is ACTIVE and running normally" << std::endl;
+                break;
+            case STARTING:
+                std::cout << "Server is STARTING up" << std::endl;
+                break;
+            case STOPPED:
+                std::cout << "Server is STOPPED" << std::endl;
+                break;
+            case REBOOTING:
+                std::cout << "Server is REBOOTING" << std::endl;
+                break;
+            case FAILED:
+                std::cout << "Server has FAILED" << std::endl;
+                break;
+            case MAINTENANCE:
+                std::cout << "Server is in MAINTENANCE mode" << std::endl;
+                break;
+            default:
+                std::cout << "Unknown server status" << std::endl;
+                break;
+        }
     }
-
-    void message_get(){
-        read_from_client(5);
-    }
-
-
     
+    std::string get_server_status_string() {
+    switch (server_status) {
+        case ACTIVE:       return "ACTIVE";
+        case STARTING:     return "STARTING";
+        case STOPPED:      return "STOPPED";
+        case REBOOTING:    return "REBOOTING";
+        case FAILED:       return "FAILED";
+        case MAINTENANCE:  return "MAINTENANCE";
+        default:           return "UNKNOWN";
+    }
+}
 
     void for_debag() {
         for (auto& c : client_accepting) {
             std::cout << "fd: " << c.first << " status: " << c.second.status << " BUFFER: " << c.second.buffer << "\n";
         }
+    }
+
+    void start() {
+        start_server();
     }
 
 };
