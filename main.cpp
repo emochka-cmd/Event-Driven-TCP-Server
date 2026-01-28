@@ -13,7 +13,18 @@
 
 class Server {
 private:
+    enum SERVER_STATUS {
+        // need realize all
+        ACTIVE,
+        STARTING,
+        STOPED,
+        REBOOT,
+        FAILED,
+        MAINTENANCE
+    };
+
     int sock; 
+    SERVER_STATUS server_status; 
 
     enum STATUS {
         NEW, //
@@ -39,12 +50,22 @@ private:
     const int listen_count = 10;
     const int buffer_size = 1024;
 
+    void start() {
+        server_status = STARTING;
+
+        sock = creat_sock();
+        bind_socket();
+        listening();
+
+        server_status = ACTIVE;
+    }
+
     int creat_sock() {
         int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
         
         if (sock_res == -1) {
             std::cerr << "server socket error: " << strerror(errno) << "\n";
-            exit(EXIT_FAILURE);
+            server_status = FAILED;
         }
     
         return sock_res;
@@ -62,7 +83,7 @@ private:
         if (bind_res == -1) {
             std::cerr << "bind error: " << strerror(errno) << "\n";
             close(sock);
-            exit(EXIT_FAILURE);
+            server_status = FAILED;
         }
     }
 
@@ -72,7 +93,7 @@ private:
         if (listen_res == -1) {
             std::cerr << "lesten error: " << strerror(errno) << "\n";
             close(sock);
-            exit(EXIT_FAILURE);
+            server_status = FAILED;
         }
     }
 
@@ -83,6 +104,7 @@ private:
         int client_fd = accept(sock, (struct sockaddr*)&client_addr, &len_client_addr);
         
         if (client_fd == -1) {
+            client_accepting[client_fd].status = ERROR;
             std::cerr << "client accept error: " << strerror(errno) << "\n";
         } 
 
@@ -95,54 +117,40 @@ private:
 
     void read_from_client(const int& fd) {
         char buffer[buffer_size];
-        std::memset(buffer, 0, sizeof(buffer));
-
-        while (true) {
-            size_t bytes_read = recv(fd, buffer, sizeof(buffer) - 1, 0); // replace flag if need different function
-
-            if (bytes_read == -1) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    // Больше данных нет
-                    if (!client_accepting[fd].buffer.empty()) {
-                        client_accepting[fd].status = PROCESSING;
-                        return;
-                    }
-                }
-
-                client_accepting[fd].status = ERROR;
-            }
-
-            if (bytes_read == 0) {
-                // Соединение закрыто клиентом
-                client_accepting[fd].status = CLOSED;
-                std::cout << "Client " << fd << " closed connection\n";
-                return;
-            }
-
-            buffer[bytes_read] = '\0';
-            client_accepting[fd].buffer += buffer;  
-
-            if (client_accepting[fd].buffer.find('\n') != std::string::npos) {
-                client_accepting[fd].status = PROCESSING;
-                return;
-            }
-
-            // Можно также ограничить максимальный размер буфера
-            if (client_accepting[fd].buffer.size() > buffer_size) {
-                client_accepting[fd].status = PROCESSING;
-                return;
-            }
-        }
         
+        ssize_t reed_res = recv(fd, buffer, sizeof(buffer) - 1, 0);
+
+        if (reed_res == -1) {
+            if (reed_res == EAGAIN || reed_res == EWOULDBLOCK) {
+                return;
+            }
+
+            client_accepting[fd].status = ERROR;
+            std::cerr << "Read client " << fd << " " << strerror(errno) << "\n";
+            
+            return;
+        }
+
+        if (reed_res == 0) {
+            client_accepting[fd].status = CLOSED;
+            std::cerr << "Client " << fd << " closed connection" << "\n"; 
+            return;
+        }
+
+        buffer[reed_res] = '\0'; 
+        client_accepting[fd].buffer += buffer;
+        
+        std::cout << "Client " << fd << " send " << reed_res << " bytes" << "\n";
+
+        if (client_accepting[fd].buffer.find('\n') != std::string::npos) {
+            // проверка, полное ли сообщение
+            client_accepting[fd].status = PROCESSING;
+        }
     }
 
 
 public:
-    void start() {
-        sock = creat_sock();
-        bind_socket();
-        listening();
-    }
+
 
     void accept_client() {
         client_accept();
@@ -152,9 +160,12 @@ public:
         read_from_client(5);
     }
 
+
+    
+
     void for_debag() {
         for (auto& c : client_accepting) {
-            std::cout << "fd: " << c.first << " status: " << c.second.status << " BUFFER:" << c.second.buffer << "\n";
+            std::cout << "fd: " << c.first << " status: " << c.second.status << " BUFFER: " << c.second.buffer << "\n";
         }
     }
 
