@@ -168,8 +168,22 @@ private:
         } 
 
         else {
+            int flags = fcntl(client_fd, F_GETFL, 0);
+            
+            if (flags == -1) {
+                std::cerr << "Error getting client socket flags: " << strerror(errno) << "\n";
+                close(client_fd);
+                return;
+            }
+        
+            if (fcntl(client_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+                std::cerr << "Error setting client non-blocking: " << strerror(errno) << "\n";
+                close(client_fd);
+                return;
+            }
+
             client_accepting[client_fd] = {CONNECTED, ""};
-            std::cout << "Client accept, res: " << client_fd <<"\n";    
+            std::cout << "Client--non-blocked accept, res: " << client_fd <<"\n";    
         }
     
     }
@@ -311,15 +325,19 @@ private:
     }
 
     void send_message(const std::string& message) {
-        size_t alredy_send = 0, need_send = message.length();
+        size_t already_sent = 0, total_to_send = message.length();
         const char* data = message.c_str();
 
-        while (alredy_send <= need_send) {
-            size_t send_res = send(sock, data + alredy_send, need_send - alredy_send, 0); // last - flags, more in man send
+        const int send_try = 1000;
+        int curr_send_trying = 0;
+
+        while ((curr_send_trying < send_try) && (already_sent < total_to_send)) {
+            ssize_t send_res = send(sock, data + already_sent, total_to_send - already_sent, 0); // last - flags, more in man send? maybe add
             
             if (send_res == -1) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK){
-                    usleep(1000);
+                    usleep(10000);
+                    curr_send_trying++;
                     continue;
                 }
 
@@ -331,11 +349,18 @@ private:
                 return;
             }
 
-            alredy_send += send_res;
-            need_send -= send_res;
+            curr_send_trying = 0;
+            already_sent += send_res;
+
         }
         
-        std::cout << "Send message SUCCSESS" << "\n";
+        if (already_sent == total_to_send) {
+            std::cout << "Send message SUCCESS" << "\n";
+        } 
+        
+        else {
+            std::cerr << "Send message FAILED: sent only " << already_sent << "/" << total_to_send << " bytes\n";
+        }
     }
 
 
