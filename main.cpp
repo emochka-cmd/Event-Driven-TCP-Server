@@ -11,10 +11,25 @@
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
 
+enum STATUS {
+    NEW, //
+    CONNECTED, // принят в accept, дальше в READING/CLOSED
+    READING, // вызывает recv, далее в PROCESING/CLOSSED/ERROR
+    PROCESSING, // данные полученны WRITING/READING/CLOSSED
+    WRITING, // все отправленно READING/CLOSED/ERROR
+    CLOSED,
+    ERROR // CLOSED
+};
+
+std::unordered_map<int, STATUS> client_accepting; // первое значение - fd, второе концепт, пока бред
+
 class Server {
 private:
     int sock; 
-    std::unordered_map<int, std::string> client_accepting; // первое значение - fd, второе концепт, пока бред
+
+
+
+    
 
 
     const int family = AF_INET; 
@@ -72,9 +87,9 @@ private:
         } 
 
         else {
-            client_accepting[accept_res] = "NEW"; // перенести в другое место?
+
             std::cout << "Client accept, res: " << accept_res <<"\n";
-            client_accepting[accept_res] = "CONNECTED"; 
+             
         }
         
     }
@@ -82,8 +97,7 @@ private:
     void get_message() {
         for (const auto& curr_client : client_accepting) {
             
-            if (curr_client.second == "CONNECTED") {
-                client_accepting[curr_client.first] = "READING";
+            if (curr_client.second == CONNECTED) {
 
                 char buffer[4096];
                 std::memset(&buffer, 0, sizeof(buffer));
@@ -101,7 +115,7 @@ private:
                     std::cerr << "Error in get_message" << strerror(errno) << "\n"; 
                 }
 
-
+                client_accepting[curr_client.first] = READING;
             }
 
         }
