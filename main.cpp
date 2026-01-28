@@ -25,14 +25,19 @@ private:
         ERROR // CLOSED
     };
 
-    std::unordered_map<int, STATUS> client_accepting; // первое значение - fd, второе status
+    struct Client {
+        STATUS status;
+        std::string buffer;
+    };
+
+    std::unordered_map<int, Client> client_accepting; // первое значение - fd, второе status
 
     const int family = AF_INET; 
     const int PORT = 8080;
     const int ADDR = INADDR_ANY; // возможно заменить на "127.0.0.1"  
     
     const int listen_count = 10;
-
+    const int buffer_size = 1024;
 
     int creat_sock() {
         int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
@@ -78,19 +83,56 @@ private:
         int client_fd = accept(sock, (struct sockaddr*)&client_addr, &len_client_addr);
         
         if (client_fd == -1) {
-            client_accepting[client_fd] = ERROR;
             std::cerr << "client accept error: " << strerror(errno) << "\n";
         } 
 
         else {
-            client_accepting[client_fd] = CONNECTED;
+            client_accepting[client_fd] = {CONNECTED, ""};
             std::cout << "Client accept, res: " << client_fd <<"\n";    
         }
     
     }
 
-    void get_message() {
-        
+    void read_from_client(const int& fd) {
+        char buffer[buffer_size];
+        std::memset(buffer, 0, sizeof(buffer));
+
+        while (true) {
+            size_t bytes_read = recv(fd, buffer, sizeof(buffer) - 1, 0); // replace flag if need different function
+
+            if (bytes_read == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // Больше данных нет
+                    if (!client_accepting[fd].buffer.empty()) {
+                        client_accepting[fd].status = PROCESSING;
+                        return;
+                    }
+                }
+
+                client_accepting[fd].status = ERROR;
+            }
+
+            if (bytes_read == 0) {
+                // Соединение закрыто клиентом
+                client_accepting[fd].status = CLOSED;
+                std::cout << "Client " << fd << " closed connection\n";
+                return;
+            }
+
+            buffer[bytes_read] = '\0';
+            client_accepting[fd].buffer += buffer;  
+
+            if (client_accepting[fd].buffer.find('\n') != std::string::npos) {
+                client_accepting[fd].status = PROCESSING;
+                return;
+            }
+
+            // Можно также ограничить максимальный размер буфера
+            if (client_accepting[fd].buffer.size() > buffer_size) {
+                client_accepting[fd].status = PROCESSING;
+                return;
+            }
+        }
         
     }
 
@@ -107,12 +149,12 @@ public:
     }
 
     void message_get(){
-        get_message();
+        read_from_client(5);
     }
 
     void for_debag() {
         for (auto& c : client_accepting) {
-            std::cout << "fd: " << c.first << " status: " << c.second << "\n";
+            std::cout << "fd: " << c.first << " status: " << c.second.status << " BUFFER:" << c.second.buffer << "\n";
         }
     }
 
