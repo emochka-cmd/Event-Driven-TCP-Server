@@ -11,26 +11,21 @@
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
 
-enum STATUS {
-    NEW, //
-    CONNECTED, // принят в accept, дальше в READING/CLOSED
-    READING, // вызывает recv, далее в PROCESING/CLOSSED/ERROR
-    PROCESSING, // данные полученны WRITING/READING/CLOSSED
-    WRITING, // все отправленно READING/CLOSED/ERROR
-    CLOSED,
-    ERROR // CLOSED
-};
-
-std::unordered_map<int, STATUS> client_accepting; // первое значение - fd, второе концепт, пока бред
-
 class Server {
 private:
     int sock; 
 
+    enum STATUS {
+        NEW, //
+        CONNECTED, // принят в accept, дальше в READING/CLOSED
+        READING, // вызывает recv, далее в PROCESING/CLOSSED/ERROR
+        PROCESSING, // данные полученны WRITING/READING/CLOSSED
+        WRITING, // все отправленно READING/CLOSED/ERROR
+        CLOSED,
+        ERROR // CLOSED
+    };
 
-
-    
-
+    std::unordered_map<int, STATUS> client_accepting; // первое значение - fd, второе status
 
     const int family = AF_INET; 
     const int PORT = 8080;
@@ -80,45 +75,23 @@ private:
         struct sockaddr_in client_addr;
         
         socklen_t len_client_addr= sizeof(client_addr);
-        int accept_res = accept(sock, (struct sockaddr*)&client_addr, &len_client_addr);
+        int client_fd = accept(sock, (struct sockaddr*)&client_addr, &len_client_addr);
         
-        if (accept_res == -1) {
+        if (client_fd == -1) {
+            client_accepting[client_fd] = ERROR;
             std::cerr << "client accept error: " << strerror(errno) << "\n";
         } 
 
         else {
-
-            std::cout << "Client accept, res: " << accept_res <<"\n";
-             
+            client_accepting[client_fd] = CONNECTED;
+            std::cout << "Client accept, res: " << client_fd <<"\n";    
         }
-        
+    
     }
 
     void get_message() {
-        for (const auto& curr_client : client_accepting) {
-            
-            if (curr_client.second == CONNECTED) {
-
-                char buffer[4096];
-                std::memset(&buffer, 0, sizeof(buffer));
-
-                int recv_res = recv(curr_client.first, buffer, sizeof(buffer) - 1, 0);
-
-                if (recv_res > 0) {
-                    buffer[recv_res] = '\0';
-
-                    std::string message(buffer);
-                    std::cout << "get message: " << message << "\n";
-                }
-
-                if (recv_res == -1) {
-                    std::cerr << "Error in get_message" << strerror(errno) << "\n"; 
-                }
-
-                client_accepting[curr_client.first] = READING;
-            }
-
-        }
+        
+        
     }
 
 
@@ -135,6 +108,12 @@ public:
 
     void message_get(){
         get_message();
+    }
+
+    void for_debag() {
+        for (auto& c : client_accepting) {
+            std::cout << "fd: " << c.first << " status: " << c.second << "\n";
+        }
     }
 
 };
@@ -178,7 +157,10 @@ private:
             std::cerr << "client connection error: " << strerror(errno) << "\n";
         }
 
+        else {
         std::cout << "Client connect SUCCSESS." << "\n";
+        }
+
     }
 
     void send_message(const std::string& message) {
@@ -234,4 +216,7 @@ int main() {
     my_client.create_message("fffffasfddasdaswds");
 
     my_server.message_get();
+
+    // for debaging
+    my_server.for_debag();
 }
