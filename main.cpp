@@ -52,6 +52,7 @@ private:
     
     const int listen_count = 10;
     const int buffer_size = 1024;
+    const int max_events = 20;
 
     void creat_sock() {
         int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
@@ -63,7 +64,7 @@ private:
         }
         
         sock = sock_res;
-        std::cout << "Socket is creating." << "\n";
+        std::cout << "Socket is creating " << "\n";
     }
 
     void non_blocked_sock_mod() {
@@ -110,6 +111,10 @@ private:
             server_status = FAILED;
             exit(EXIT_FAILURE);
         }
+
+        else {
+            std::cout << "Start listening" << "\n";
+        }
     }
 
     void create_epoll() {
@@ -122,16 +127,17 @@ private:
         } 
 
         else {
-            epoll_register_in_socket();
-            std::cout << "Create epool";
+            register_server_fd();
+            std::cout << "Create epool" << "\n";
         }
     }
 
-    void epoll_register_in_socket() {
+    void register_server_fd() {
         struct epoll_event event;
+        std::memset(&event, 0, sizeof(event));
         event.events = EPOLLIN; // more info in wiki
         event.data.fd = sock;
-
+        // в данном случает с EPOLL_CTL_ADD добавляет целевой описатель fd в epoll
         int res = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &event); // epoll поддерживает все описатели файлов, поддерживаемые poll(2)
 
         if (res == -1) {
@@ -140,7 +146,26 @@ private:
         }
 
         else {
-            std::cout << "Epool register." << "\n";
+            std::cout << "Epool register" << "\n";
+        }
+    }
+
+    void register_client_fd() {
+
+    }
+
+    void run_server() {
+        struct epoll_event event[max_events];
+
+        int wait_res = epoll_wait(epoll_fd, event, max_events, 0);
+
+        if (wait_res == -1) {
+            std::cerr << "Epoll wait error: " << strerror(errno) << "\n"; 
+        }
+
+
+        for (int i = 0; i < wait_res; i++) {
+            std::cout << "client";
         }
     }
 
@@ -152,14 +177,9 @@ private:
         bind_socket();
         listening();
         create_epoll();
+    
+        run_server();
     }
-
-
-
-    void run_server() {
-        
-    }
-
 
     void client_accept() {
         struct sockaddr_in client_addr;
@@ -322,7 +342,7 @@ private:
         }
 
         else {
-        std::cout << "Client connect SUCCSESS." << "\n";
+        std::cout << "Client connect SUCCSESS" << "\n";
         }
 
     }
