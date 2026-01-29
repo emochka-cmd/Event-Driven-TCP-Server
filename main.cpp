@@ -10,6 +10,7 @@
 #include <netinet/in.h> // sock_addrin
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
+#include <sys/epoll.h> // epoll
 #include <fcntl.h> // for non block
 
 class Server {
@@ -25,6 +26,7 @@ private:
     };
 
     int sock; 
+    int epoll_fd;
     SERVER_STATUS server_status; 
 
     enum STATUS {
@@ -51,17 +53,17 @@ private:
     const int listen_count = 10;
     const int buffer_size = 1024;
 
-
-    int creat_sock() {
+    void creat_sock() {
         int sock_res = socket(AF_INET, SOCK_STREAM, 0); 
         
         if (sock_res == -1) {
             std::cerr << "server socket error: " << strerror(errno) << "\n";
             server_status = FAILED;
+            exit(EXIT_FAILURE);
         }
         
+        sock = sock_res;
         std::cout << "Socket is creating." << "\n";
-        return sock_res;
     }
 
     void non_blocked_sock_mod() {
@@ -69,7 +71,7 @@ private:
         
         if (flags == -1) {
             std::cerr << "Error getting socket flags: " << strerror(errno) << "\n";
-            exit(0); 
+            exit(EXIT_FAILURE);
         }
 
         int res = fcntl(sock, F_SETFL, flags | O_NONBLOCK);
@@ -95,6 +97,7 @@ private:
             std::cerr << "bind error: " << strerror(errno) << "\n";
             close(sock);
             server_status = FAILED;
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -105,55 +108,56 @@ private:
             std::cerr << "lesten error: " << strerror(errno) << "\n";
             close(sock);
             server_status = FAILED;
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    void create_epoll() {
+        // запрос к ядру на размещение собитий
+        epoll_fd = epoll_create1(0);
+        
+        if (epoll_fd == -1) {
+            std::cerr << "Create_epool error: " << strerror(errno) << "\n";
+            exit(EXIT_FAILURE);
+        } 
+
+        else {
+            epoll_register_in_socket();
+            std::cout << "Create epool";
+        }
+    }
+
+    void epoll_register_in_socket() {
+        struct epoll_event event;
+        event.events = EPOLLIN; // more info in wiki
+        event.data.fd = sock;
+
+        int res = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &event); // epoll поддерживает все описатели файлов, поддерживаемые poll(2)
+
+        if (res == -1) {
+            std::cerr << "Epoll reg error: " << strerror(errno) << "\n";
+            exit(EXIT_FAILURE);
+        }
+
+        else {
+            std::cout << "Epool register." << "\n";
         }
     }
 
     void start_server() {
         server_status = STARTING;
 
-        sock = creat_sock();
+        creat_sock();
         non_blocked_sock_mod();
         bind_socket();
         listening();
+        create_epoll();
     }
 
 
+
     void run_server() {
-        server_status = ACTIVE;
-
-        while (server_status == ACTIVE) {
-            client_accept();
-            for (auto& client : client_accepting) {
-                switch (client.second.status) {
-                    //case (NEW):
-                    
-                    case (CONNECTED): // прием сообщения
-                        read_from_client(client.first);
-                        break;
-
-                     case (READING):
-                        std::cout << "need make reading" << "\n";
-                        break;
-
-                    case (PROCESSING):
-                        std::cout << "need make processing" << "\n";
-                        break;
-
-                    case (WRITING):
-                        std::cout << "need make writing" << "\n";
-                        break;
-
-                    case (ERROR): // возможно добавление обработки в будующем
-                        client_accepting[client.first].status = CLOSED; 
-                        break;
-
-                    case (CLOSED): // удаление
-                        client_accepting.erase(client.first);
-                        break;
-
-                }
-            }
-        }
+        
     }
 
 
@@ -274,7 +278,6 @@ public:
 
     Server () {
         start_server();
-        usleep(666);
     }
 
 };
@@ -342,15 +345,18 @@ private:
                 }
 
                 std::cerr << "Send Error: " << strerror(errno) << "\n";
+                return;
             }
             
-            if (send_res == 0) {
+            else if (send_res == 0) {
                 std::cerr << "connection closed\n";
                 return;
             }
 
-            curr_send_trying = 0;
-            already_sent += send_res;
+            else {
+                curr_send_trying = 0;
+                already_sent += send_res;
+            }
 
         }
         
