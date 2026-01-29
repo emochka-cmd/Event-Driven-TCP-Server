@@ -141,7 +141,7 @@ private:
         int res = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &event); // epoll поддерживает все описатели файлов, поддерживаемые poll(2)
 
         if (res == -1) {
-            std::cerr << "Epoll reg error: " << strerror(errno) << "\n";
+            std::cerr << "Epoll reg server error: " << strerror(errno) << "\n";
             exit(EXIT_FAILURE);
         }
 
@@ -150,22 +150,46 @@ private:
         }
     }
 
-    void register_client_fd() {
+    void register_client_fd(const int& client_fd) {
+        struct epoll_event event;
+        /*
+            EPOLLIN - Ассоциированный файл доступен для операций read(2). 
+            EPOLLOUT - Ассоциированный файл доступен для операций write(2). 
+            EPOLLET - Устанавливает поведение Edge Triggered для ассоциированного описателя файлов
+        */
+        std::memset(&event, 0, sizeof(event));
+        event.events = EPOLLIN; // далее добавить epollet
+        event.data.fd = client_fd;
+        
+        int res = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event);
 
+        if (res == -1) {
+            std::cerr << "Epoll reg client error: " << strerror(errno) << "\n";
+            exit(EXIT_FAILURE);
+            close(client_fd);
+        }
+        
+        else {
+            std::cout << "Client " << client_fd << " add in epoll" << "\n";
+        }
     }
 
     void run_server() {
-        struct epoll_event event[max_events];
+        server_status = ACTIVE;
 
-        int wait_res = epoll_wait(epoll_fd, event, max_events, 0);
+        while (server_status == ACTIVE) {
+            struct epoll_event event[max_events];
 
-        if (wait_res == -1) {
-            std::cerr << "Epoll wait error: " << strerror(errno) << "\n"; 
-        }
+            int wait_res = epoll_wait(epoll_fd, event, max_events, -1);
+
+            if (wait_res == -1) {
+                std::cerr << "Epoll wait error: " << strerror(errno) << "\n"; 
+            }
 
 
-        for (int i = 0; i < wait_res; i++) {
-            std::cout << "client";
+            for (int i = 0; i < wait_res; i++) {
+                std::cout << "client";
+            }
         }
     }
 
@@ -177,7 +201,7 @@ private:
         bind_socket();
         listening();
         create_epoll();
-    
+        
         run_server();
     }
 
@@ -206,7 +230,9 @@ private:
                 return;
             }
 
+            // регистрация клиента
             client_accepting[client_fd] = {CONNECTED, ""};
+            register_client_fd(client_fd); 
             std::cout << "Client--non-blocked accept, res: " << client_fd <<"\n";    
         }
     
@@ -404,12 +430,14 @@ public:
 int main() {
     Server my_server;
 
-    Client_Server my_client;
+    Client_Server my_client1, my_client2, my_client3;
 
-    my_client.create_message("fffffasfddasdaswds");
+    my_client1.create_message("fffffasfddasdaswds");
+    my_client2.create_message("ffff");
+    my_client3.create_message("fffffasfddasdaswdsfesf");
 
     // for debaging
     my_server.serv();
-
+    
     my_server.for_debag();
 }
