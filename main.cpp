@@ -188,7 +188,16 @@ private:
 
 
             for (int i = 0; i < wait_res; i++) {
-                std::cout << "client";
+                int fd = event[i].data.fd;
+                int ev = event[i].events; 
+
+                if (fd == sock) {
+                    client_accept();
+                }
+
+                else {
+                    
+                }
             }
         }
     }
