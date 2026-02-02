@@ -1,5 +1,6 @@
 #include <cerrno>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -265,33 +266,37 @@ private:
     void read_from_client(const int& fd) {
         char buffer[buffer_size];
         
-        ssize_t reed_res = recv(fd, buffer, sizeof(buffer) - 1, 0);
+        while (true) {
+            ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
 
-        if (reed_res == -1) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            if (n > 0) {
+                client_accepting[fd].buffer.append(buffer, n);
+            }
+
+            else if (n == 0) {
+                client_accepting[fd].status = CLOSED;
+                std::cerr << "Client " << fd << " closed connection" << "\n"; 
                 return;
             }
 
-            client_accepting[fd].status = ERROR;
-            std::cerr << "Read client " << fd << " " << strerror(errno) << "\n";
-            
-            return;
-        }
+            else if (n == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    break;
+                }
 
-        if (reed_res == 0) {
-            client_accepting[fd].status = CLOSED;
-            std::cerr << "Client " << fd << " closed connection" << "\n"; 
-            return;
+                client_accepting[fd].status = ERROR;
+                std::cerr << "Read client: " << fd << " ERROR: " << strerror(errno) << "\n";
+                return;
+            }
         }
-
-        buffer[reed_res] = '\0'; 
-        client_accepting[fd].buffer += buffer;
-        
-        std::cout << "Client " << fd << " send " << reed_res << " bytes" << "\n";
 
         if (client_accepting[fd].buffer.find('\n') != std::string::npos) {
             // проверка, полное ли сообщение
             client_accepting[fd].status = PROCESSING;
+        }
+
+        else {
+            client_accepting[fd].status = READING;
         }
     }
 
@@ -398,45 +403,43 @@ private:
     }
 
     void send_message(const std::string& message) {
-        size_t already_sent = 0, total_to_send = message.length();
-        const char* data = message.c_str();
+        // [4 bytes - len][n byte - data]
+        uint32_t len = message.size();
+        uint32_t net_len = htonl(len);
 
-        const int send_try = 1000;
-        int curr_send_trying = 0;
+        // подготовка данных - в начале длина, затем сообщение
+        std::string packet;
+        packet.resize(sizeof(net_len) + len);
+        
+        std::memcpy(&packet[0], &net_len, sizeof(net_len));
+        std::memcpy(&packet[sizeof(net_len)], message.data(), len);
 
-        while ((curr_send_trying < send_try) && (already_sent < total_to_send)) {
-            ssize_t send_res = send(sock, data + already_sent, total_to_send - already_sent, 0); // last - flags, more in man send? maybe add
+        // изменение счетчиков
+        size_t total_to_send = packet.size();
+        size_t already_send = 0;
+
+        const char* data = packet.data(); // указатель на масив с данными для отправки
+
+        while (already_send < total_to_send) {
+            ssize_t curr_send = send(sock, data + already_send, total_to_send - already_send, 0);
             
-            if (send_res == -1) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK){
-                    usleep(10000);
-                    curr_send_trying++;
+            if (curr_send > 0) {
+                already_send += curr_send;
+                continue;
+            }
+
+            if (curr_send == -1) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // для non-blocking клиента — допустимо
+                    usleep(1000);
                     continue;
                 }
-
-                std::cerr << "Send Error: " << strerror(errno) << "\n";
-                return;
-            }
-            
-            else if (send_res == 0) {
-                std::cerr << "connection closed\n";
-                return;
             }
 
-            else {
-                curr_send_trying = 0;
-                already_sent += send_res;
-            }
-
+            std::cerr << "Send error: " << strerror(errno) << "\n";
+            return; 
         }
-        
-        if (already_sent == total_to_send) {
-            std::cout << "Send message SUCCESS" << "\n";
-        } 
-        
-        else {
-            std::cerr << "Send message FAILED: sent only " << already_sent << "/" << total_to_send << " bytes\n";
-        }
+        std::cout << "Send message SUCCESS (" << len << " bytes)\n";
     }
 
 
