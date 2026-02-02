@@ -180,30 +180,38 @@ private:
         while (server_status == ACTIVE) {
             struct epoll_event event[max_events];
 
-            int wait_res = epoll_wait(epoll_fd, event, max_events, -1);
+            int num_events = epoll_wait(epoll_fd, event, max_events, -1);
 
-            if (wait_res == -1) {
-                std::cerr << "Epoll wait error: " << strerror(errno) << "\n"; 
+            if (num_events == -1) {
+                if (errno == EINTR) { // сигнал прервал системный вызов
+                    continue;
+                }
+                std::cerr << "Epoll wait error: " << strerror(errno) << "\n";
+                break; 
             }
 
 
-            for (int i = 0; i < wait_res; i++) {
+            for (int i = 0; i < num_events; i++) {
                 int fd = event[i].data.fd;
-                int ev = event[i].events; 
+                uint32_t ev = event[i].events; 
 
                 if (fd == sock) {
                     client_accept();
                 }
 
-                else {
-                    switch (ev) {
-                        case EPOLLIN:
-
-                        case EPOLLOUT:
-
-                        case EPOLLERR | EPOLLHUP:
-                        
+                else if (ev & EPOLLIN) { // ready for read
+                    
+                    if (client_accepting.find(fd) != client_accepting.end() && client_accepting[fd].status ==  CONNECTED) {
+                        read_from_client(fd);
+                        std::cout << "client " << fd << " buffer: " << client_accepting[fd].buffer << " status: " << client_accepting[fd].status;
                     }
+                    
+                    else {
+                        std::cerr << "Client " << fd << " not find in client map";
+                        close(fd);
+                    }
+
+
                 }
             }
         }
@@ -218,7 +226,7 @@ private:
         listening();
         create_epoll();
         
-        run_server();
+        //run_server();
     }
 
     void client_accept() {
@@ -455,5 +463,7 @@ int main() {
     // for debaging
     my_server.serv();
     
-    my_server.for_debag();
+    //my_server.for_debag();
+
+    
 }
