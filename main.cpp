@@ -196,7 +196,14 @@ private:
                 }
 
                 else {
-                    
+                    switch (ev) {
+                        case EPOLLIN:
+
+                        case EPOLLOUT:
+
+                        case EPOLLERR | EPOLLHUP:
+                        
+                    }
                 }
             }
         }
