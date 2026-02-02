@@ -1,4 +1,5 @@
 #include <cerrno>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unordered_map>
+#include <bitset>
 #include <netinet/in.h> // sock_addrin
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
@@ -264,40 +266,7 @@ private:
     }
 
     void read_from_client(const int& fd) {
-        char buffer[buffer_size];
-        
-        while (true) {
-            ssize_t n = recv(fd, buffer, sizeof(buffer), 0);
-
-            if (n > 0) {
-                client_accepting[fd].buffer.append(buffer, n);
-            }
-
-            else if (n == 0) {
-                client_accepting[fd].status = CLOSED;
-                std::cerr << "Client " << fd << " closed connection" << "\n"; 
-                return;
-            }
-
-            else if (n == -1) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    break;
-                }
-
-                client_accepting[fd].status = ERROR;
-                std::cerr << "Read client: " << fd << " ERROR: " << strerror(errno) << "\n";
-                return;
-            }
-        }
-
-        if (client_accepting[fd].buffer.find('\n') != std::string::npos) {
-            // проверка, полное ли сообщение
-            client_accepting[fd].status = PROCESSING;
-        }
-
-        else {
-            client_accepting[fd].status = READING;
-        }
+        return;
     }
 
 
@@ -404,21 +373,19 @@ private:
 
     void send_message(const std::string& message) {
         // [4 bytes - len][n byte - data]
-        uint32_t len = message.size();
-        uint32_t net_len = htonl(len);
+        ssize_t message_len = message.length();
+        if (message_len > UINT_MAX){
+            std::cerr << "Message to mutch big" << "/n";
+            return;
+        }
 
-        // подготовка данных - в начале длина, затем сообщение
-        std::string packet;
-        packet.resize(sizeof(net_len) + len);
-        
-        std::memcpy(&packet[0], &net_len, sizeof(net_len));
-        std::memcpy(&packet[sizeof(net_len)], message.data(), len);
+        ssize_t byte_len_send = send(sock, message_len, UINT_MAX, 0);
 
         // изменение счетчиков
-        size_t total_to_send = packet.size();
+        size_t total_to_send = message.size();
         size_t already_send = 0;
 
-        const char* data = packet.data(); // указатель на масив с данными для отправки
+        const char* data = message.data(); // указатель на масив с данными для отправки
 
         while (already_send < total_to_send) {
             ssize_t curr_send = send(sock, data + already_send, total_to_send - already_send, 0);
@@ -439,7 +406,7 @@ private:
             std::cerr << "Send error: " << strerror(errno) << "\n";
             return; 
         }
-        std::cout << "Send message SUCCESS (" << len << " bytes)\n";
+        std::cout << "Send message SUCCESS (" << message_len << " bytes)\n";
     }
 
 
