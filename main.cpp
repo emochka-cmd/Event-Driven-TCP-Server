@@ -48,7 +48,8 @@ private:
      };
     struct Client {
         STATUS status;
-        uint16_t expected_len; // ожидаемая длина сообщения
+        uint16_t expected_len = 0; // ожидаемая длина сообщения
+        uint16_t received_len = 0; // полученная длина сообщения
         ReadState read_state;
         std::string buffer;
     };
@@ -184,6 +185,80 @@ private:
         }
     }
 
+    void read_from_client(const int& fd) {
+       Client& client = client_accepting[fd];
+
+       while (true) {
+            if (client.read_state == READ_LEN) {
+                // чтение длины сообщения
+                uint16_t net_len;
+                ssize_t n = recv(fd, &net_len, sizeof(net_len), 0);
+
+                if (n == 0) {
+                    client.status = CLOSED;
+                    return;
+                }
+
+                if (n < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        return;
+                    }  
+                    std::cerr << "Read len error: " << strerror(errno) << "\n";
+                    client.status = ERROR;
+                    return;
+                }
+
+                if (n != sizeof(net_len)) {
+                    std::cerr << "Partial read of length\n";
+                    client.status = ERROR;
+                    return;
+                }
+
+                client.expected_len = ntohs(net_len);
+                client.buffer.clear();
+                client.buffer.reserve(client.expected_len);
+                client.received_len = 0;
+                client.read_state = READ_BODY;
+            }
+
+            if (client.read_state == READ_BODY) {
+                char tmp[1024];
+                size_t to_read = std::min(
+                sizeof(tmp),
+                static_cast<size_t>(client.expected_len - client.received_len));
+
+                ssize_t n = recv(fd, &tmp, to_read, 0);
+                
+                if (n == 0) {
+                    client.status = CLOSED;
+                    return;
+                }
+
+                if (n < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        return;
+                    }
+
+                    client.status = ERROR;
+                    return;
+                }
+
+                client.buffer.append(tmp, n);
+                client.received_len += n;
+                
+                if (client.expected_len == client.received_len) {
+                    client.status = PROCESSING;
+
+                    std::cout << "Message from fd " << fd << ": [" << client.buffer << "]\n";
+
+                    //к следующему сообщению
+                    client.read_state = READ_LEN;
+                    return;
+                }
+            }
+        }
+    }
+
     void run_server() {
         server_status = ACTIVE;
 
@@ -227,18 +302,6 @@ private:
         }
     }
 
-    void start_server() {
-        server_status = STARTING;
-
-        creat_sock();
-        non_blocked_sock_mod();
-        bind_socket();
-        listening();
-        create_epoll();
-        
-        //run_server();
-    }
-
     void client_accept() {
         struct sockaddr_in client_addr;
         
@@ -275,8 +338,16 @@ private:
     
     }
 
-    void read_from_client(const int& fd) {
+    void start_server() {
+        server_status = STARTING;
+
+        creat_sock();
+        non_blocked_sock_mod();
+        bind_socket();
+        listening();
+        create_epoll();
         
+        //run_server();
     }
 
 
