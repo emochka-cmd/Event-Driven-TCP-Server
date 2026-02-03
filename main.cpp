@@ -9,7 +9,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unordered_map>
-#include <bitset>
+#include <sys/uio.h>
 #include <netinet/in.h> // sock_addrin
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
@@ -372,30 +372,42 @@ private:
     }
 
     void send_message(const std::string& message) {
-        // [4 bytes - len][n byte - data]
-        ssize_t message_len = message.length();
-        if (message_len > UINT_MAX){
-            std::cerr << "Message to mutch big" << "/n";
+        // [16 bit - len][n bit - data]
+        const uint16_t MAX_LENGHT = 65535;
+        
+        if (message.length() > MAX_LENGHT) {
+            std::cerr << "Message from user " << sock << " to big. Max - " << MAX_LENGHT
+        << " bytes";
             return;
         }
+        
+        uint16_t len_message = htons(message.length()); 
+        // создание буферов буфера для отправки
+        struct iovec iov[2];
 
-        ssize_t byte_len_send = send(sock, message_len, UINT_MAX, 0);
+        // первый для длины
+        iov[0].iov_base = &len_message;
+        iov[0].iov_len = MAX_LENGHT;
+
+        // второй для сообщения
+        iov[1].iov_base = const_cast<char*>(message.data());
+        iov[1].iov_len = message.length();
 
         // изменение счетчиков
-        size_t total_to_send = message.size();
+        size_t total_to_send = MAX_LENGHT + message.length();
         size_t already_send = 0;
 
-        const char* data = message.data(); // указатель на масив с данными для отправки
 
+        // отправка
         while (already_send < total_to_send) {
-            ssize_t curr_send = send(sock, data + already_send, total_to_send - already_send, 0);
-            
-            if (curr_send > 0) {
-                already_send += curr_send;
+            ssize_t curr_sent = writev(sock, iov, 2);
+
+            if (curr_sent > 0) {
+                already_send += curr_sent;
                 continue;
             }
 
-            if (curr_send == -1) {
+            if (curr_sent == -1) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
                     // для non-blocking клиента — допустимо
                     usleep(1000);
@@ -406,7 +418,7 @@ private:
             std::cerr << "Send error: " << strerror(errno) << "\n";
             return; 
         }
-        std::cout << "Send message SUCCESS (" << message_len << " bytes)\n";
+        std::cout << "Send message SUCCESS (" << "" << " bytes)\n";
     }
 
 
