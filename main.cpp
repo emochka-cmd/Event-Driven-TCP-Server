@@ -286,18 +286,26 @@ private:
 
                 else if (ev & EPOLLIN) { // ready for read
                     
-                    if (client_accepting.find(fd) != client_accepting.end() && client_accepting[fd].status ==  CONNECTED) {
+                    if (client_accepting.find(fd) != client_accepting.end()){
+                        if (client_accepting[fd].status ==  CONNECTED) {
                         read_from_client(fd);
                         std::cout << "client " << fd << " buffer: " << client_accepting[fd].buffer << " status: " << client_accepting[fd].status;
+                        }
+                        
+
+                        
+                        else if (client_accepting[fd].status ==  CLOSED) {
+                            close(fd);
+                        }
+
                     }
-                    
+
                     else {
                         std::cerr << "Client " << fd << " not find in client map";
                         close(fd);
                     }
-
-
                 }
+
             }
         }
     }
