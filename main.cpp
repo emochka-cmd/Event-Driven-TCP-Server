@@ -42,10 +42,17 @@ private:
         ERROR // CLOSED
     };
 
+    enum ReadState {
+        READ_LEN, // ждем длины
+        READ_BODY // ждем сообщения
+     };
     struct Client {
         STATUS status;
+        uint16_t expected_len; // ожидаемая длина сообщения
+        ReadState read_state;
         std::string buffer;
     };
+    
 
     std::unordered_map<int, Client> client_accepting; // первое значение - fd, второе status
 
@@ -258,7 +265,10 @@ private:
             }
 
             // регистрация клиента
-            client_accepting[client_fd] = {CONNECTED, ""};
+            client_accepting[client_fd].status = CONNECTED;
+            client_accepting[client_fd].buffer = "";
+            client_accepting[client_fd].read_state = READ_LEN;
+
             register_client_fd(client_fd); 
             std::cout << "Client--non-blocked accept, res: " << client_fd <<"\n";    
         }
@@ -266,7 +276,7 @@ private:
     }
 
     void read_from_client(const int& fd) {
-        return;
+        
     }
 
 
@@ -381,20 +391,21 @@ private:
             return;
         }
         
-        uint16_t len_message = htons(message.length()); 
+        uint16_t len_message = static_cast<uint16_t>((message.length())); 
+        uint16_t net_len = htons(len_message);
         // создание буферов буфера для отправки
         struct iovec iov[2];
 
         // первый для длины
-        iov[0].iov_base = &len_message;
-        iov[0].iov_len = MAX_LENGHT;
+        iov[0].iov_base = &net_len;
+        iov[0].iov_len = sizeof(net_len);
 
         // второй для сообщения
         iov[1].iov_base = const_cast<char*>(message.data());
         iov[1].iov_len = message.length();
 
         // изменение счетчиков
-        size_t total_to_send = MAX_LENGHT + message.length();
+        size_t total_to_send = sizeof(net_len) + message.length();
         size_t already_send = 0;
 
 
@@ -404,12 +415,44 @@ private:
 
             if (curr_sent > 0) {
                 already_send += curr_sent;
+                
+                // обновление iov
+                while (curr_sent > 0) {
+                    if (iov[0].iov_len > 0) {
+                        if (static_cast<size_t>(curr_sent) >= iov[0].iov_len) {
+                            curr_sent -= iov[0].iov_len;
+                            iov[0].iov_len = 0;
+                            iov[0].iov_base = nullptr;
+                        }
+
+                        else {
+                            iov[0].iov_len -= curr_sent;
+                            iov[0].iov_base = static_cast<char*>(iov[0].iov_base) + curr_sent; 
+                            curr_sent = 0;
+                        }
+                    }
+
+                    else if (iov[1].iov_len > 0) {
+                        if (static_cast<size_t>(curr_sent) >= iov[1].iov_len) {
+                            curr_sent -= iov[1].iov_len;
+                            iov[1].iov_len = 0;
+                            iov[1].iov_base = nullptr;
+                        }
+
+                        else {
+                            iov[1].iov_len -= curr_sent;
+                            iov[1].iov_base = static_cast<char*>(iov[1].iov_base) + curr_sent; 
+                            curr_sent = 0;
+                        }
+                    }
+                }
+                
                 continue;
             }
 
             if (curr_sent == -1) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    // для non-blocking клиента — допустимо
+                    // в будующем переделать для производительности
                     usleep(1000);
                     continue;
                 }
@@ -418,7 +461,7 @@ private:
             std::cerr << "Send error: " << strerror(errno) << "\n";
             return; 
         }
-        std::cout << "Send message SUCCESS (" << "" << " bytes)\n";
+        std::cout << "Send message SUCCESS (" << already_send << " bytes)\n";
     }
 
 
