@@ -1,5 +1,4 @@
 #include <cerrno>
-#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -287,17 +286,31 @@ private:
                 else if (ev & EPOLLIN) { // ready for read
                     
                     if (client_accepting.find(fd) != client_accepting.end()){
-                        if (client_accepting[fd].status ==  CONNECTED) {
-                        read_from_client(fd);
-                        std::cout << "client " << fd << " buffer: " << client_accepting[fd].buffer << " status: " << client_accepting[fd].status;
+                        switch (client_accepting[fd].status) {
+
+                            case CONNECTED:
+                                read_from_client(fd);
+                                std::cout << "client " << fd << " buffer: " << client_accepting[fd].buffer << " status: " << client_accepting[fd].status;
+                                break;
+                            
+                            case READING:
+                                break;
+
+                            case PROCESSING:
+                                break;
+
+                            case WRITING:
+                                break;
+
+                            case ERROR:
+                                break;
+
+                            case CLOSED:
+                                close(fd);
+                                break;
+
                         }
                         
-
-                        
-                        else if (client_accepting[fd].status ==  CLOSED) {
-                            close(fd);
-                        }
-
                     }
 
                     else {
