@@ -258,6 +258,18 @@ private:
         }
     }
 
+    void closed_connection(const int& fd) {
+        // удаление клиента 
+        ssize_t epoll_del_res = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, nullptr);
+
+        if (epoll_del_res == -1) {
+            std::cerr << "Delete " << fd << " error" << "\n";
+        }
+        
+        close(fd);
+        client_accepting.erase(fd);
+    }
+
     void run_server() {
         server_status = ACTIVE;
 
@@ -306,7 +318,7 @@ private:
                                 break;
 
                             case CLOSED:
-                                close(fd);
+                                closed_connection(fd);
                                 break;
 
                         }
