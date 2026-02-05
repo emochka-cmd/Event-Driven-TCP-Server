@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <unordered_map>
 #include <sys/uio.h>
+#include <thread>
+#include <atomic>
 #include <netinet/in.h> // sock_addrin
 #include <arpa/inet.h> // inet_addr for sock
 #include <unistd.h> // close sock
@@ -17,6 +19,10 @@
 
 class Server {
 private:
+    std::thread server_thread;
+    std::atomic<bool> running{false};
+
+
     enum SERVER_STATUS {
         // need realize all
         ACTIVE,
@@ -315,6 +321,8 @@ private:
                                 break;
 
                             case ERROR:
+                                // реализовать обработку ошибок, пока просто закрывать
+                                client_accepting[fd].status = CLOSED;
                                 break;
 
                             case CLOSED:
@@ -371,8 +379,7 @@ private:
     
     }
 
-    void start_server() {
-        server_status = STARTING;
+    void server_loop() {
 
         creat_sock();
         non_blocked_sock_mod();
@@ -380,7 +387,10 @@ private:
         listening();
         create_epoll();
         
-        //run_server();
+        server_status = ACTIVE;
+        running = true;
+
+        run_server();
     }
 
 
@@ -430,13 +440,38 @@ public:
         }
     }
 
-    void serv() {
-        run_server();
+    void start() {
+        if (running) {
+            std::cerr << "Server already running\n";
+            return;
+        }
+
+        server_thread = std::thread(&Server::server_loop, this);
+
+
     }
 
-    Server () {
-        start_server();
+    void join() {
+        if (server_thread.joinable()) { // проеверяем не присоеденен ли еше поток
+            server_thread.join();
+        }
     }
+
+    void stop() {
+        if (!running) {
+            std::cerr << "Server not started";
+        }
+
+        server_status = STOPPED;
+        running = false;
+        close(sock);
+
+    }
+
+    Server() {
+        server_status = STARTING;
+    }
+    
 
 };
 
@@ -581,18 +616,9 @@ public:
 
 
 int main() {
-    Server my_server;
+    Server server;
 
-    Client_Server my_client1, my_client2, my_client3;
+    server.start();
+    server.join();
 
-    my_client1.create_message("fffffasfddasdaswds");
-    my_client2.create_message("ffff");
-    my_client3.create_message("fffffasfddasdaswdsfesf");
-
-    // for debaging
-    my_server.serv();
-    
-    //my_server.for_debag();
-
-    
 }
