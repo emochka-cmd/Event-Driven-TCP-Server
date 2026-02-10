@@ -315,6 +315,9 @@ private:
                                 break;
 
                             case PROCESSING:
+                            // логика для проверки
+                                std::cout << client_accepting[fd].buffer << " - message from " << fd << "\n";
+                                client_accepting[fd].status = CLOSED;
                                 break;
 
                             case WRITING:
@@ -327,6 +330,8 @@ private:
 
                             case CLOSED:
                                 closed_connection(fd);
+                                // для проверки
+                                std::cout << "client " << fd << " closed\n";
                                 break;
 
                         }
@@ -476,7 +481,7 @@ public:
 };
 
 
-class Client_Server {
+class CLIENT {
 private:
     int sock;
 
@@ -605,7 +610,7 @@ private:
 
 
 public:
-    Client_Server() : sock(creat_sock()) {
+    CLIENT() : sock(creat_sock()) {
         connect_to_server();
     }
 
@@ -614,11 +619,27 @@ public:
     }
 };
 
+void add_client() {
+    // проверка с подключеникм клиентов
+    CLIENT cl1, cl2, cl3, cl4;
+    cl1.create_message("messager from client cl1");
+    cl2.create_message("messager from client cl2");
+    cl3.create_message("messager from client cl3");
+    cl4.create_message("messager from client cl4");
+
+}
 
 int main() {
     Server server;
-
+    
     server.start();
+    
+     std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    std::thread clients(add_client);
+    
     server.join();
+    clients.join();
+
 
 }
