@@ -17,11 +17,11 @@
 #include <sys/epoll.h> // epoll
 #include <fcntl.h> // for non block
 
+#include "threadpool.hpp"
+
+
 class Server {
 private:
-    std::thread server_thread;
-    std::atomic<bool> running{false};
-
 
     enum SERVER_STATUS {
         // need realize all
@@ -393,7 +393,6 @@ private:
         create_epoll();
         
         server_status = ACTIVE;
-        running = true;
 
         run_server();
     }
@@ -446,30 +445,15 @@ public:
     }
 
     void start() {
-        if (running) {
-            std::cerr << "Server already running\n";
-            return;
-        }
-
-        server_thread = std::thread(&Server::server_loop, this);
-
-
+        
     }
 
     void join() {
-        if (server_thread.joinable()) { // проеверяем не присоеденен ли еше поток
-            server_thread.join();
-        }
+       
     }
 
     void stop() {
-        if (!running) {
-            std::cerr << "Server not started";
-        }
-
-        server_status = STOPPED;
-        running = false;
-        close(sock);
+       
 
     }
 
